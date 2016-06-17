@@ -1,0 +1,187 @@
+<?php
+
+/**
+ * Class VersionedDataObjectHistoryForm
+ */
+class VersionedDataObjectHistoryForm extends GridFieldDetailForm
+{
+}
+
+/**
+ * Class VersionedDataObjectHistoryForm_ItemRequest
+ */
+class VersionedDataObjectHistoryForm_ItemRequest extends GridFieldDetailForm_ItemRequest
+{
+    private static $allowed_actions = array(
+        'edit',
+        'view',
+        'history',
+        'ItemEditForm'
+    );
+
+    // pass VersionID as an extra parameter
+    private static $url_handlers = array(
+        '$Action!/$VersionID' => '$Action',
+        '' => 'history',
+    );
+
+    /**
+     * @return Form
+     */
+    public function ItemEditForm()
+    {
+        VersionedReadingMode::setStageReadingMode();
+
+        $selectedVersionId = $this->request->param('VersionID');
+
+        $fields = $this->component->getFields();
+        if(!$fields) $fields = $this->record->getCMSFields();
+        $fields = $fields->makeReadonly();
+
+        $actions = new FieldList();
+
+        $form = new Form(
+            $this,
+            'ItemEditForm',
+            $fields,
+            $actions,
+            $this->component->getValidator()
+        );
+
+        // get the selected version
+        if ($selectedVersionId) {
+            $selectedVersion = Versioned::get_version($this->record->ClassName, $this->record->ID, $selectedVersionId);
+        }
+        else {
+            // no version parameter so get the current version.
+            $selectedVersion = $this->record;
+            $selectedVersionId = $selectedVersion->Version;
+        }
+
+        $actions->push(
+            FormAction::create(
+                'goBackToEdit',
+                'Back to Edit'
+                )
+                ->setUseButtonTag(true)
+                ->setAttribute('data-icon', 'back')
+            );
+
+        $actions->push(
+            $rollback = FormAction::create(
+                'goRollback',
+                'Rollback to this version'
+                )
+                ->setUseButtonTag(true)
+            );
+
+        // don't allow rollback to the version we're already on.
+        if ($selectedVersionId == $this->record->Version) {
+            $rollback->setReadonly(true);
+        }
+
+        $form->loadDataFrom($selectedVersion, Form::MERGE_DEFAULT);
+
+        $versions = $this->record->allVersions();
+
+        // build an ArrayList of history ready for rendering in a template.
+        $historyList = ArrayList::create();
+
+        foreach($versions as $version) {
+
+            $publishedby = Member::get()->byId($version->PublisherID);
+            $authoredby = Member::get()->byId($version->AuthorID);
+
+            $historyList->push (
+                ArrayData::create(array(
+                    'version' => $version->Version,
+                    'published_status' => $version->WasPublished ? 'Published' : 'Draft',
+                    'published_by' => $publishedby ? $publishedby->getName() : '',
+                    'authored_by' => $authoredby ? $authoredby->getName() : '',
+                    'updated_on' => $version->LastEdited,
+                    'is_selected' => $version->Version == $selectedVersionId,
+                ))
+            );
+        }
+
+        $data = new ArrayData(array(
+            'historyList' => $historyList,
+            'url' => Controller::join_links($this->Link(), 'history')
+            ));
+
+        // render the list and add it to the form as literal html.
+        $fields->push(
+            LiteralField::create('historyList', $data->renderWith('HistoryList'))
+        );
+
+        // we need this for the rollback action.
+        $fields->push(
+            HiddenField::create('version_id', '', $selectedVersionId)
+            );
+
+        // TODO Coupling with CMS
+        $toplevelController = $this->getToplevelController();
+        if($toplevelController && $toplevelController instanceof LeftAndMain) {
+            // Always show with base template (full width, no other panels),
+            // regardless of overloaded CMS controller templates.
+            // TODO Allow customization, e.g. to display an edit form alongside a search form from the CMS controller
+            $form->setTemplate('LeftAndMain_EditForm');
+            $form->addExtraClass('cms-content cms-edit-form center');
+            $form->setAttribute('data-pjax-fragment', 'CurrentForm Content');
+            if($form->Fields()->hasTabset()) {
+                $form->Fields()->findOrMakeTab('Root')->setTemplate('CMSTabSet');
+                $form->addExtraClass('cms-tabset');
+            }
+
+            $form->Backlink = $this->getBackLink();
+        }
+
+        $cb = $this->component->getItemEditFormCallback();
+        if($cb) $cb($form, $this);
+        $this->extend("updateItemEditForm", $form);
+
+        VersionedReadingMode::restoreOriginalReadingMode();
+
+        return $form;
+    }
+
+    public function history($request) {
+        $controller = $this->getToplevelController();
+        $form = $this->ItemEditForm($this->gridField, $request);
+
+        $return = $this->customise(array(
+            'Backlink' => $controller->hasMethod('Backlink') ? $controller->Backlink() : $controller->Link(),
+            'ItemEditForm' => $form,
+        ))->renderWith($this->template);
+
+        if($request->isAjax()) {
+            return $return;
+        } else {
+            // If not requested by ajax, we need to render it within the controller context+template
+            return $controller->customise(array(
+                // TODO CMS coupling
+                'Content' => $return,
+            ));
+        }
+    }
+
+    public function goRollback($data, $form)
+    {
+        // this does basically the same as page rollback.
+        VersionedReadingMode::setStageReadingMode();
+
+        $selectedVersionId = $data['version_id'];
+        $this->record->doRollbackTo($selectedVersionId);
+
+        VersionedReadingMode::restoreOriginalReadingMode();
+
+        $url = Controller::join_links($this->Link(), 'history');
+        return Controller::curr()->redirect($url);
+    }
+
+    public function goBackToEdit($data, $form)
+    {
+        $url = str_replace('/HistoryForm/', '/EditForm/', $this->Link()) . '/edit';
+        return Controller::curr()->redirect($url);
+    }
+}

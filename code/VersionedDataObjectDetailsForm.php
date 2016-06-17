@@ -15,17 +15,19 @@ class VersionedDataObjectDetailsForm_ItemRequest extends GridFieldDetailForm_Ite
     private static $allowed_actions = array(
         'edit',
         'view',
-        'ItemEditForm'
+        'ItemEditForm',
     );
+
 
     /**
      * @return Form
      */
     public function ItemEditForm()
-    {
+    {        
         VersionedReadingMode::setStageReadingMode();
 
         $form = parent::ItemEditForm();
+
         /* @var $actions FieldList */
         if ($form instanceof Form) {
             $actions = $form->Actions();
@@ -82,6 +84,15 @@ class VersionedDataObjectDetailsForm_ItemRequest extends GridFieldDetailForm_Ite
                 $actions->removeByName('action_doDelete');
             }
         
+            if($this->record->ID !== 0) {
+                $actions->push(
+                    FormAction::create(
+                        'goHistory',
+                        'History'
+                        )
+                    );
+            }
+
             $this->extend("updateItemEditForm", $form);
         
         }
@@ -265,4 +276,9 @@ class VersionedDataObjectDetailsForm_ItemRequest extends GridFieldDetailForm_Ite
         $controller->redirect($this->getBackLink());
     }
 
+    public function goHistory($data, $form)
+    {
+        $url = str_replace('/EditForm/', '/HistoryForm/', $this->Link()) . '/history';
+        return Controller::curr()->redirect($url);
+    }
 }

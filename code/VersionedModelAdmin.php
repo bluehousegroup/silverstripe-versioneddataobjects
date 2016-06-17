@@ -5,6 +5,10 @@
  */
 class VersionedModelAdmin extends ModelAdmin
 {
+    private static $allowed_actions = array(
+        'HistoryForm',
+    );
+
     /**
      * Customise the edit form so that It uses the VersionedDataObjectDetailsForm as well as make
      * sure that the reading stage is 'Stage'.
@@ -14,12 +18,19 @@ class VersionedModelAdmin extends ModelAdmin
      */
     public function getEditForm($id = null, $fields = null)
     {
+        // get the third parameter without changing the signiture so it stays the same as the base class.
+        $args = func_get_args();
+        $isHistory = isset($args[2]) ? $args[2] : false;
 
         VersionedReadingMode::setStageReadingMode();
 
         $list = $this->getList();
         $exportButton = new GridFieldExportButton('buttons-before-left');
         $exportButton->setExportColumns($this->getExportFields());
+
+        // create the appropriate detail form
+        $editForm = $isHistory ? new VersionedDataObjectHistoryForm() : new VersionedDataObjectDetailsForm();
+
         $listField = GridField::create(
             $this->sanitiseClassName($this->modelClass),
             false,
@@ -30,7 +41,7 @@ class VersionedModelAdmin extends ModelAdmin
                 ->removeComponentsByType('GridFieldDeleteAction')
                 ->addComponents(new GridFieldPrintButton('buttons-before-left'))
                 ->removeComponentsByType('GridFieldDetailForm')
-                ->addComponent(new VersionedDataObjectDetailsForm())
+                ->addComponent($editForm)
         );
 
         // Validation
@@ -48,7 +59,11 @@ class VersionedModelAdmin extends ModelAdmin
         $form->setResponseNegotiator($this->getResponseNegotiator());
         $form->addExtraClass('cms-edit-form cms-panel-padded center');
         $form->setTemplate($this->getTemplatesWithSuffix('_EditForm'));
-        $editFormAction = Controller::join_links($this->Link($this->sanitiseClassName($this->modelClass)), 'EditForm');
+
+        // post to the correct URL.
+        $editAction = $isHistory ? 'HistoryForm' : 'EditForm';
+        $editFormAction = Controller::join_links($this->Link($this->sanitiseClassName($this->modelClass)), $editAction);
+
         $form->setFormAction($editFormAction);
         $form->setAttribute('data-pjax-fragment', 'CurrentForm');
 
@@ -57,5 +72,10 @@ class VersionedModelAdmin extends ModelAdmin
         VersionedReadingMode::restoreOriginalReadingMode();
 
         return $form;
+    }
+
+    public function HistoryForm($request = null) {
+        // pass an extra parameter to specify that we want the history detail form.
+        return $this->getEditForm(null, null, true);
     }
 }
