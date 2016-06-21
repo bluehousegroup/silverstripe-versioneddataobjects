@@ -278,7 +278,11 @@ class VersionedDataObjectDetailsForm_ItemRequest extends GridFieldDetailForm_Ite
 
     public function goHistory($data, $form)
     {
-        $url = str_replace('/EditForm/', '/HistoryForm/', $this->Link()) . '/history';
-        return Controller::curr()->redirect($url);
+        $url = str_replace('/EditForm/', '/HistoryForm/', $this->Link());
+
+        $controller = $this->getToplevelController();
+        $controller->getResponse()->addHeader("X-Pjax", "Content");
+        $controller->redirect(Controller::join_links($url, 'history'));
+
     }
 }

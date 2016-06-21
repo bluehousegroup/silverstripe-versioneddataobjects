@@ -75,6 +75,14 @@ class VersionedDataObjectHistoryForm_ItemRequest extends GridFieldDetailForm_Ite
                 ->setUseButtonTag(true)
             );
 
+        // This is hidden with CSS and triggered by the select links using jQuery.
+        $actions->push(
+            $selectbtn = FormAction::create(
+                'goSelectVersion',
+                'Select Version'
+                )
+            );
+
         // don't allow rollback to the version we're already on.
         if ($selectedVersionId == $this->record->Version) {
             $rollback->setReadonly(true);
@@ -106,7 +114,7 @@ class VersionedDataObjectHistoryForm_ItemRequest extends GridFieldDetailForm_Ite
 
         $data = new ArrayData(array(
             'historyList' => $historyList,
-            'url' => Controller::join_links($this->Link(), 'history')
+            'url' => '/' . Controller::join_links($this->Link(), 'history')
             ));
 
         // render the list and add it to the form as literal html.
@@ -175,13 +183,24 @@ class VersionedDataObjectHistoryForm_ItemRequest extends GridFieldDetailForm_Ite
 
         VersionedReadingMode::restoreOriginalReadingMode();
 
-        $url = Controller::join_links($this->Link(), 'history');
-        return Controller::curr()->redirect($url);
+        $controller = $this->getToplevelController();
+        $controller->getResponse()->addHeader("X-Pjax", "Content");
+        $controller->redirect(Controller::join_links($this->Link(), 'history'));
     }
 
     public function goBackToEdit($data, $form)
     {
-        $url = str_replace('/HistoryForm/', '/EditForm/', $this->Link()) . '/edit';
-        return Controller::curr()->redirect($url);
+        $url = str_replace('/HistoryForm/', '/EditForm/', $this->Link());
+
+        $controller = $this->getToplevelController();
+        $controller->getResponse()->addHeader("X-Pjax", "Content");
+        $controller->redirect(Controller::join_links($url, 'edit'));
+    }
+
+    public function goSelectVersion($data, $form)
+    {
+        $controller = $this->getToplevelController();
+        $controller->getResponse()->addHeader("X-Pjax", "Content");
+        $controller->redirect($this->link() . '/history/' . $data['vid']);
     }
 }
