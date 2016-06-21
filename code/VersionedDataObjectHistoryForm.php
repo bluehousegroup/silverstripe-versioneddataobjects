@@ -69,8 +69,8 @@ class VersionedDataObjectHistoryForm_ItemRequest extends GridFieldDetailForm_Ite
 
         $actions->push(
             $rollback = FormAction::create(
-                'goRollback',
-                'Rollback to this version'
+                'goRevert',
+                'Revert to this version'
                 )
                 ->setUseButtonTag(true)
             );
@@ -83,7 +83,7 @@ class VersionedDataObjectHistoryForm_ItemRequest extends GridFieldDetailForm_Ite
                 )
             );
 
-        // don't allow rollback to the version we're already on.
+        // Don't allow rollback to the version we're already on.
         if ($selectedVersionId == $this->record->Version) {
             $rollback->setReadonly(true);
         }
@@ -92,7 +92,7 @@ class VersionedDataObjectHistoryForm_ItemRequest extends GridFieldDetailForm_Ite
 
         $versions = $this->record->allVersions();
 
-        // build an ArrayList of history ready for rendering in a template.
+        // Build an ArrayList of history ready for rendering in a template.
         $historyList = ArrayList::create();
 
         foreach($versions as $version) {
@@ -100,13 +100,16 @@ class VersionedDataObjectHistoryForm_ItemRequest extends GridFieldDetailForm_Ite
             $publishedby = Member::get()->byId($version->PublisherID);
             $authoredby = Member::get()->byId($version->AuthorID);
 
+            $lastEditDT = new SS_Datetime();
+            $lastEditDT->setValue($version->LastEdited);
+
             $historyList->push (
                 ArrayData::create(array(
                     'version' => $version->Version,
                     'published_status' => $version->WasPublished ? 'Published' : 'Draft',
                     'published_by' => $publishedby ? $publishedby->getName() : '',
                     'authored_by' => $authoredby ? $authoredby->getName() : '',
-                    'updated_on' => $version->LastEdited,
+                    'last_edit_dt' => $lastEditDT,
                     'is_selected' => $version->Version == $selectedVersionId,
                 ))
             );
@@ -173,9 +176,9 @@ class VersionedDataObjectHistoryForm_ItemRequest extends GridFieldDetailForm_Ite
         }
     }
 
-    public function goRollback($data, $form)
+    public function goRevert($data, $form)
     {
-        // this does basically the same as page rollback.
+        // this does basically the same as page revert.
         VersionedReadingMode::setStageReadingMode();
 
         $selectedVersionId = $data['version_id'];
@@ -201,6 +204,13 @@ class VersionedDataObjectHistoryForm_ItemRequest extends GridFieldDetailForm_Ite
     {
         $controller = $this->getToplevelController();
         $controller->getResponse()->addHeader("X-Pjax", "Content");
-        $controller->redirect($this->link() . '/history/' . $data['vid']);
+        $url = Controller::join_links($this->link(), 'history');
+
+        // Add the version to the end of the URL if we're selecting other than the current version.
+        if (isset($data['vid']) && $data['vid'] != $this->record->Version) {
+            $url = Controller::join_links($url, $data['vid']);
+        }
+
+        $controller->redirect($url);
     }
 }
